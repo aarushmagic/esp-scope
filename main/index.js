@@ -177,7 +177,7 @@ function connect() {
   // const wsUrl = 'ws://localhost:8080/signal';
 
   ws = new WebSocket(wsUrl);
-
+  ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
     statusEl.textContent = 'Connected via WebSocket';
     statusEl.style.color = '#4ade80';
@@ -190,9 +190,9 @@ function connect() {
 
   ws.onmessage = (event) => {
     try {
-      const msg = JSON.parse(event.data);
-      if (msg.data && Array.isArray(msg.data)) {
-        processData(msg.data);
+      const arr = new Uint16Array(event.data);
+      if (arr?.length) {
+        processData(arr);
         draw();
       }
     } catch (e) {

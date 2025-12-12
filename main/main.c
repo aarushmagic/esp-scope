@@ -482,37 +482,22 @@ static void ws_sender_task(void *arg) {
         s_ringbuf_handle, &item_size, pdMS_TO_TICKS(10));
 
     if (data != NULL) {
-      int num_samples = item_size / sizeof(uint16_t);
       if (s_ws_client_fd != -1) {
-        // Create JSON object
-        cJSON *root = cJSON_CreateObject();
-        cJSON *data_array = cJSON_CreateArray();
-        for (int i = 0; i < num_samples; i++) {
-          cJSON_AddItemToArray(data_array, cJSON_CreateNumber(data[i]));
-        }
-        cJSON_AddItemToObject(root, "data", data_array);
+        // Create WebSocket frame for binary data
+        httpd_ws_frame_t ws_frame = {
+            .final = true,
+            .fragmented = false,
+            .type = HTTPD_WS_TYPE_BINARY,
+            .payload = (uint8_t *)data,
+            .len = item_size
+        };
 
-        // Serialize JSON to string
-        char *json_str = cJSON_PrintUnformatted(root);
-        if (json_str) {
-          httpd_ws_frame_t ws_frame = {
-              .final = true,
-              .fragmented = false,
-              .type = HTTPD_WS_TYPE_TEXT,
-              .payload = (uint8_t *)json_str,
-              .len = strlen(json_str)};
-
-          // Send JSON frame
-          esp_err_t ret = httpd_ws_send_frame_async(s_server, s_ws_client_fd, &ws_frame);
-          if (ret != ESP_OK) {
+        // Send binary frame
+        esp_err_t ret = httpd_ws_send_frame_async(s_server, s_ws_client_fd, &ws_frame);
+        if (ret != ESP_OK) {
             ESP_LOGW(TAG, "WS Send failed, invalidating FD");
             s_ws_client_fd = -1;
-          }
-
-          free(json_str);
         }
-
-        cJSON_Delete(root);
       }
       vRingbufferReturnItem(s_ringbuf_handle, (void *)data);
     } else {
