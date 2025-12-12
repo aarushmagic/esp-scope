@@ -1,0 +1,19 @@
+# ESP-IDF
+/build/
+/sdkconfig
+/sdkconfig.old
+/managed_components/
+/dependencies.lock
+/.cache
+/.clangd
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
