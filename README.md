@@ -58,7 +58,7 @@ If you have the esp-idf VSCode extension, just click on the flame to build, flas
 
 ### Accessing the Web Interface
 
-If your DHCP server supports it, the app sets its hostname and yu can just navigate to http://espscope (you may have/need a default domain extension)
+If your DHCP server supports it, the app sets its hostname and you can just navigate to http://esp-scope (you may have/need a default domain extension)
 
 1. After flashing, the ESP32 will display its IP address in the serial monitor.
 2. Open a web browser and navigate to the displayed IP address (e.g., `http://192.168.4.1`).
