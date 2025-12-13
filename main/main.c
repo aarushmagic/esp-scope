@@ -59,8 +59,7 @@ static void start_webserver(void);
 #define ADC_GET_CHANNEL(p_data) ((p_data)->type2.channel)
 #define ADC_GET_DATA(p_data) ((p_data)->type2.data)
 
-#define ADC_READ_LEN 512
-#define ADC_MAX_STORE_BUF_SIZE 1024
+#define ADC_READ_LEN 1024
 
 static adc_continuous_handle_t adc_handle = NULL;
 static TaskHandle_t s_task_handle;
@@ -71,7 +70,7 @@ static int s_ws_client_fd = -1;
 
 // Global configuration state
 static volatile bool s_reconfig_needed = false;
-static uint32_t s_sample_rate = 20000;
+static uint32_t s_sample_rate = 10000;
 static adc_atten_t s_atten = ADC_ATTEN_DB_12;
 static adc_bitwidth_t s_bit_width = ADC_BIT_WIDTH;
 static uint16_t s_test_hz = 100;
@@ -282,7 +281,7 @@ void app_main(void) {
     ESP_LOGE(TAG, "Failed to create ring buffer");
   }
 
-  xTaskCreate(adc_read_task, "adc_read_task", 4 * 1024, NULL, 5, NULL);
+  xTaskCreate(adc_read_task, "adc_read_task", 4096 + ADC_READ_LEN, NULL, 5, NULL);
 
   // Wait for WiFi connection
   EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,

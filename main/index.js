@@ -156,7 +156,8 @@ canvas.addEventListener('click', (event) => {
 });
 
 // Data buffer
-const maxPoints = 1000;
+const maxPoints = 4000;
+/** @type Array<number> */
 let dataBuffer = new Array(maxPoints).fill(0);
 
 // WebSocket
@@ -201,7 +202,7 @@ function connect() {
   };
 }
 
-function processData(newData) {
+function processData(/** @type Uint16Array */newData) {
   if (isFrozen) {
     return; // Skip updating the buffer when frozen
   }
@@ -219,30 +220,31 @@ function processData(newData) {
     pushToBuffer(newData);
   } else {
     // Accumulation mode (Peak Detect)
-    let pointsToPush = [];
-    for (let val of newData) {
+    let pointsToPush = new Uint16Array(newData.length * 2); // Worst case
+    let idx = 0;
+    for (const val of newData) {
       if (val < lowRateState.accMin) lowRateState.accMin = val;
       if (val > lowRateState.accMax) lowRateState.accMax = val;
       lowRateState.count++;
 
       if (lowRateState.count >= lowRateState.targetCount) {
         // Push min and max to draw a vertical line
-        pointsToPush.push(lowRateState.accMin);
-        pointsToPush.push(lowRateState.accMax);
+        pointsToPush[idx++] = lowRateState.accMin;
+        pointsToPush[idx++] = lowRateState.accMax;
 
         // Reset
         resetLowRateState();
       }
     }
-    if (pointsToPush.length > 0) {
-      pushToBuffer(pointsToPush);
+    if (idx > 0) {
+      pushToBuffer(pointsToPush.slice(0, idx));
     }
   }
 }
 
-function pushToBuffer(newItems) {
+function pushToBuffer(/** @type Uint16Array */ newItems) {
   if (newItems.length >= maxPoints) {
-    dataBuffer = newItems.slice(-maxPoints);
+    dataBuffer = Array.from(newItems.slice(-maxPoints));
   } else {
     dataBuffer.splice(0, newItems.length);
     dataBuffer.push(...newItems);
