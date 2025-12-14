@@ -19,8 +19,9 @@ let activeConfig = {
 let lowRateState = {
   accMin: 4096,
   accMax: 0,
-  count: 0,
-  targetCount: 1
+  accMax: 0,
+  progress: 0.0,
+  targetCount: 1.0
 };
 
 // Approximate full-scale voltages for ESP32C6/ESP32 ADC attenuations
@@ -74,7 +75,8 @@ function calculateTimeOffset(offsetX, effectiveSampleRate) {
 function resetLowRateState() {
   lowRateState.accMin = 4096;
   lowRateState.accMax = 0;
-  lowRateState.count = 0;
+  lowRateState.accMax = 0;
+  // NOTE: We do NOT reset progress to maintain fractional phase alignment across packets
 }
 
 // Helper function to schedule WebSocket reconnection
@@ -227,21 +229,31 @@ function processData(/** @type Uint16Array */newData) {
     // Passthrough mode
     pushToBuffer(newData);
   } else {
-    // Accumulation mode (Peak Detect)
+    // Accumulation mode (Peak Detect) with Fractional Resampling
     let pointsToPush = new Uint16Array(newData.length * 2); // Worst case
     let idx = 0;
+
+    // We add 1.0 "samples worth" of progress for each input sample.
+    // When progress >= targetCount, we have enough input density to emit an output point.
+    // We subtract targetCount (rather than reset to 0) to preserve fractional error (dither/phase).
+
     for (const val of newData) {
       if (val < lowRateState.accMin) lowRateState.accMin = val;
       if (val > lowRateState.accMax) lowRateState.accMax = val;
-      lowRateState.count++;
 
-      if (lowRateState.count >= lowRateState.targetCount) {
+      lowRateState.progress += 1.0;
+
+      if (lowRateState.progress >= lowRateState.targetCount) {
         // Push min and max to draw a vertical line
         pointsToPush[idx++] = lowRateState.accMin;
         pointsToPush[idx++] = lowRateState.accMax;
 
-        // Reset
-        resetLowRateState();
+        // Reset Min/Max for next window
+        lowRateState.accMin = 4096;
+        lowRateState.accMax = 0;
+
+        // Subtract one full window's worth of progress
+        lowRateState.progress -= lowRateState.targetCount;
       }
     }
     if (idx > 0) {
@@ -361,7 +373,6 @@ function draw() {
   ctx.strokeStyle = '#4ade80';
   ctx.lineWidth = 2;
 
-  const step = w / (maxPoints - 1);
   const maxAdcVal = 4096; // 12-bit fixed scale
 
   // Trigger values
@@ -374,6 +385,7 @@ function draw() {
     }
   }
 
+  let step = w / (maxPoints - 1);
   drawData.forEach((val, i) => {
     const x = i * step;
     const y = h - (val / maxAdcVal * h);
