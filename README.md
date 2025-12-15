@@ -82,6 +82,8 @@ The displayed signal is sampled from ADC0. The test signal is output on D1. The 
 
 The 3D design is a two part case with space for a AA-battery (Li-poly 3.7v, which can connect directly to a Seeed XIAO ESP device) clips and holes for the USB-C connector and "ground", "signal" and "test" connections using standard 2.54mm pitch, easily cut from jumpers and soldered directly to the Seeed XIAO. The 3D design was done using Fusion 360 and printed on a Bambu Labs A1 Mini in 30 minutes.
 
+I recommend putting the "Signal" connection in the middle, and never connecting the outer-most pins (ground and test) to avoid shorting the signal to ground and (probably) frying the esp32. The middle (signal) pin can be connected to either of its neigbours and you'll see either the ground or the test signal.
+
 ![esp-scope](esp-scope-3d.jpg)
 
 ## License
