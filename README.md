@@ -1,16 +1,17 @@
 # ESP-Scope
 
 ## Overview
-ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser. The project leverages the ESP32's ADC capabilities and serves a web interface for signal visualization.
+ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser. The project leverages the ESP32's ADC capabilities and serves a web interface for signal visualization. It contains complete source code and 3D design for a case for the Seeed XIAO ESP32C6.
 
 ![esp-scope](screenshot.png)
 
 ## Features
 - Real-time signal visualization on a web browser.
-- Adjustable sample rate (10-100000 Hz), bit width, and attenuation.
+- Adjustable sample rate (1-83333 Hz) and attenuation.
 - Crosshair functionality for precise measurements.
 - Adjustable trigger level.
 - Reset functionality to clear settings and reload the interface.
+- Power off from the browser.
 
 ## Getting Started
 
@@ -32,7 +33,7 @@ ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allo
 
 ### Building and Flashing
 
-If you have the esp-idf VSCode extension, just click on the flame to build, flash & monitor. Use the config settings for "espScope" to set youur WiFi SSID & password.
+If you have the esp-idf VSCode extension, just click on the flame to build, flash & monitor. Use the config settings for "espScope" to specify GPIO pins for the LED & "AP-Mode" button, and if necessary and board-specific setup file (one provided for the Seeed Studio XIAO ESP32C6).
 
 1. Set up the ESP-IDF environment:
    ```bash
@@ -60,16 +61,25 @@ If you have the esp-idf VSCode extension, just click on the flame to build, flas
 
 If your DHCP server supports it, the app sets its hostname and you can just navigate to http://esp-scope (you may have/need a default domain extension)
 
-1. After flashing, the ESP32 will display its IP address in the serial monitor.
-2. Open a web browser and navigate to the displayed IP address (e.g., `http://192.168.4.1`).
-3. Use the web interface to:
-   - Adjust settings like sample rate, bit width, and attenuation.
+1. After flashing, ESP-SCOPE will start as a WiFi access point. Connect to it to access the UI.
+2. If desired, click the "WiFi" button and set your SSID & WiFi password. The device will reboot and join your network. Pressing and holding the GPIO "AP-Mode" button will erase the WiFi credentials and return to Access Point mode.
+3. Open a web browser and navigate to "http://esp-scope" (you may have/need a default domain extension)
+4. Use the web interface to:
+   - Adjust settings like sample rate, attenuation & the test signal frequency.
    - Visualize signals in real-time.
    - Reset the interface using the "Reset" button.
+   - Re-configure the WiFi using the "WiFi" button.
+   - Power off the device
 
 ### Attaching hardware
 
-The displayed signal is sampled from ADC0. The test signal is output on D1.
+The displayed signal is sampled from ADC0. The test signal is output on D1. The default GPIOs for the LED and "AP-Mode" button are 15 and 9 respectively (hardwired on an Seeed XIAO ESP32C6 to the yellow LED and "Boot" button).
+
+## 3D design
+
+The 3D design is a two part case with space for a AA-battery (Li-poly 3.7, which can connect directly to a Seeed XIAO ESP device) clips and holes for the USB-C connector and "ground", "signal" and "test" connections using standard 2.54mm pitch, easily cut from jumpers and soldered directly to the Seeed XIAO. The design was done using Fusion 360.
+
+![esp-scope](esp-scope-3d.png)
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
@@ -77,3 +87,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 ## Acknowledgments
 - Built using the ESP-IDF framework by Espressif Systems.
 - Inspired by the need for affordable and accessible signal visualization tools.
+
+This project was written in part to test AI code generators. Much of the code was written by Google Antigravity using Gemini 3, with refinements, hints and top and overall design specified by a human. The whole app was up and running a few hours and finished, including 3D design in a weekend.
