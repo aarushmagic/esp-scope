@@ -3,7 +3,7 @@
 ## Overview
 ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser. The project leverages the ESP32's ADC capabilities and serves a web interface for signal visualization. It contains complete source code and 3D design for a case for the Seeed XIAO ESP32C6.
 
-This project was written in part to test AI code generators and see if they're any good. Much of the code was written by Google Antigravity using Gemini 3, with refinements, hints and top and overall design specified by a human. The whole app was up and running a few hours and finished, including 3D design in a weekend.
+This project was written in part to test AI code generators and see if they're any good. Much of the code was written by Google Antigravity using Gemini 3, with refinements, hints and tips and overall design specified by a human. The whole app was up and running a few hours and finished, including 3D design in a weekend.
 
 ![esp-scope](screenshot.png)
 
