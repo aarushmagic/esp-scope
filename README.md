@@ -79,7 +79,7 @@ The displayed signal is sampled from ADC0. The test signal is output on D1. The 
 
 The 3D design is a two part case with space for a AA-battery (Li-poly 3.7, which can connect directly to a Seeed XIAO ESP device) clips and holes for the USB-C connector and "ground", "signal" and "test" connections using standard 2.54mm pitch, easily cut from jumpers and soldered directly to the Seeed XIAO. The design was done using Fusion 360.
 
-![esp-scope](esp-scope-3d.png)
+![esp-scope](esp-scope-3d.jpg)
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
