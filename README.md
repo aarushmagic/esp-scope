@@ -1,102 +1,81 @@
-# ESP-Scope
+# ESP-Scope (ESP32 Fork)
 
-THIS IS IN PROGRESS. FORKED OFF OF [MatAtBread's ESP-Scope](https://github.com/MatAtBread/esp-scope/). All credits go to original author.
+This is a fork of [MatAtBread's ESP-Scope](https://github.com/MatAtBread/esp-scope/), adapted to run on the **Standard ESP32** (e.g., ESP32-WROOM, ESP32-DevKitC) instead of the ESP32-C6.
 
 ## Overview
-ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser. The project leverages the ESP32's ADC capabilities and serves a web interface for signal visualization. It contains complete source code and 3D design for a case for the Seeed XIAO ESP32C6.
+ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser using the ESP32's internal ADC.
 
-This project was written in part to test AI code generators and see if they're any good. Much of the code was written by Google Antigravity using Gemini 3, with refinements, hints and tips and overall design specified by a human. The whole app was up and running a few hours and finished, including 3D design in a weekend.
+The project launches a dedicated WiFi Access Point (or connects to your existing network) and serves a responsive web interface for signal visualization, complete with trigger controls and sample rate adjustments.
 
-![esp-scope](screenshot.png)
+## Hardware Configuration
+This fork is pre-configured for standard ESP32 boards (target `esp32`).
+
+| Function | Pin | Note |
+| :--- | :--- | :--- |
+| **Signal Input** | **GPIO 36** (VP) | ADC1 Channel 0 |
+| **Test Signal** | **GPIO 25** | Generates a square wave for testing |
+| **Status LED** | **GPIO 2** | Standard onboard LED |
+| **Mode Button** | **GPIO 0** | "Boot" button. Hold to reset WiFi settings. |
+
+*Note: Ensure your input voltage does not exceed 3.3V (or the attenuated limit if settings are changed).*
 
 ## Features
-- Real-time signal visualization on a web browser.
-- Adjustable sample rate (1-83333 Hz) and attenuation.
-- Crosshair functionality for precise measurements.
-- Adjustable trigger level.
-- Test signal generation.
-- Reset functionality to clear settings and reload the interface.
-- Power off from the browser.
+- **Real-time Visualization**: High-speed plotting via WebSockets.
+- **Adjustable Settings**: Sample rate (up to ~83kHz), attenuation, and bit width.
+- **Triggering**: Software trigger with adjustable level and rising/falling edge detection.
+- **Math**: Delta measurements (Voltage/Time) using mouse-over crosshairs.
+- **Test Signal**: Built-in square wave generator on GPIO 25.
+- **WiFi Management**: Functions as an AP (`ESP-Scope`) by default; can connect to an existing network via the Web UI.
 
 ## Getting Started
 
 ### Prerequisites
-- ESP32 development board.
-- [ESP-IDF](https://github.com/espressif/esp-idf) installed and configured.
-- USB cable to connect the ESP32 to your computer.
-- A web browser (e.g., Chrome, Firefox).
-
-### Downloading the Project
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/MatAtBread/esp-scope.git
-   ```
-2. Navigate to the project directory:
-   ```bash
-   cd esp-scope
-   ```
+- [ESP-IDF](https://github.com/espressif/esp-idf) installed and configured (v5.0+ recommended).
+- A standard ESP32 development board.
 
 ### Building and Flashing
 
-If you have the esp-idf VSCode extension, just click on the flame to build, flash & monitor. Use the config settings for "espScope" to specify GPIO pins for the LED & "AP-Mode" button, and if necessary a board-specific setup file (one is provided for the Seeed Studio XIAO ESP32C6 to enable the internal ceramic antenna).
-
-1. Set up the ESP-IDF environment:
+1. **Clone the repository:**
    ```bash
-   . $IDF_PATH/export.sh
+   git clone https://github.com/aarushmagic/esp-scope.git
+   cd esp-scope
    ```
-2. Configure the project:
+2. **Set the target to ESP32:**
    ```bash
-   idf.py menuconfig
+   idf.py set-target esp32
    ```
-3. Build the project:
+3. **Build the project:**
    ```bash
    idf.py build
    ```
-4. Flash the firmware to the ESP32:
+4. **Flash and Monitor:**
    ```bash
-   idf.py -p [PORT] flash
+   idf.py -p [PORT] flash monitor
    ```
-   Replace `[PORT]` with the serial port of your ESP32 (e.g., `/dev/ttyUSB0` or `COM3`).
-5. Monitor the serial output:
-   ```bash
-   idf.py monitor
-   ```
+   *(Replace [PORT] with your device path, e.g., /dev/ttyUSB0 or COM3)*
 
-### Using the esp-scope
+### Usage
+1. Connect:
+   * On first boot, the device creates a WiFi network named ESP-Scope. Connect to it (no password by default).
+   * Alternatively, monitor the Serial output to see the IP address if you configured station mode.
+2. Open the Interface:
+   * Navigate to http://esp-scope (or http://192.168.4.1 if using the AP).
+3. Controls:
+   * Rate: Adjust the sampling frequency.
+   * Atten: Change ADC attenuation (input range).
+   * TestHz: Change the frequency of the square wave on GPIO 25.
+   * WiFi Button: Configure the device to connect to your home router.
+   * Reset Button: Hold the physical BOOT button (GPIO 0) on the device to wipe WiFi settings and return to AP mode.
 
-If your DHCP server supports it (most seem to), the app sets its hostname and you can just navigate to http://esp-scope (you may have/need a default domain extension)
+### LED Status Codes
+* Solid: Starting up or connecting.
+* 1s Flash: AP Mode (Connect to "ESP-Scope").
+* Slow Blinks: Connected to WiFi station.
+* Rapid Blinks: Sending WebSocket data to a client
 
-1. After flashing, ESP-SCOPE will start as a WiFi access point. Connect to it to access the UI.
-2. If desired, click the "WiFi" button and set your SSID & WiFi password. The device will reboot and join your network. Pressing and holding the GPIO "AP-Mode" button will erase the WiFi credentials and return to Access Point mode.
-3. Open a web browser and navigate to "http://esp-scope" (you may have/need a default domain extension).
-4. Use the web interface to:
-   - Adjust settings like sample rate, attenuation & the test signal frequency.
-   - Visualize signals in real-time.
-   - Reset the interface using the "Reset" button.
-   - Re-configure the WiFi using the "WiFi" button.
-   - Power off the device
-
-The LED indicates one of four conditions:
-* Continuously lit: waiting to attach to a wifi network or starting the wireless AP
-* Equal 1 second flash: in AP mode - connect to the "ESP-Scope" access point
-* Slow, brief flashes: connected to the WiFi SSID set in the web UI
-* Rapid, brief flashes: sending data to an active client
-
-### Attaching hardware
-
-The displayed signal is sampled from ADC0. The test signal is output on D1. The default GPIOs for the LED and "AP-Mode" button are 15 and 9 respectively (hard-wired on an Seeed XIAO ESP32C6 to the yellow LED and "Boot" button).
-
-## 3D design
-
-The 3D design is a two part case with space for a AA-battery (Li-poly 3.7v, which can connect directly to a Seeed XIAO ESP device) clips and holes for the USB-C connector and "ground", "signal" and "test" connections using standard 2.54mm pitch, easily cut from jumpers and soldered directly to the Seeed XIAO. The 3D design was done using Fusion 360 and printed on a Bambu Labs A1 Mini in 30 minutes.
-
-I recommend putting the "Signal" connection in the middle, and never connecting the outer-most pins (ground and test) to avoid shorting the test signal to ground and (probably) frying the esp32. The middle (signal) pin can be connected to either of its neigbours and you'll see either the ground or the test signal.
-
-![esp-scope](esp-scope-3d.jpg)
+## Credits
+* Original project by [MatAtBread](https://github.com/MatAtBread).
+* Adapted for ESP32 Standard.
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for details.
-
-## Acknowledgments
-- Built using the ESP-IDF framework by Espressif Systems.
-- Gemini 3.
+This project is licensed under the MIT License. See the LICENSE file for details.This project is licensed under the MIT License. See the LICENSE file for details.
