@@ -2,30 +2,43 @@
 
 This is a fork of [MatAtBread's ESP-Scope](https://github.com/MatAtBread/esp-scope/), adapted to run on the **Standard ESP32** (e.g., ESP32-WROOM, ESP32-DevKitC) instead of the ESP32-C6.
 
-## Overview
-ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser using the ESP32's internal ADC.
+## ⚠️ Known Limitations
+**Frequency Mismatch:**
+There is currently a known issue where the frequency of the generated waveform does not match the frequency measured by the oscilloscope.
+* **Symptoms:** You will see the correct wave **shape** (Sine, Square, Triangle), but the frequency displayed on the scope (or the period of the wave) may differ significantly from the frequency you requested in the "Func Gen" tab.
+* **Cause:** It is currently undetermined if this is due to an error in the signal generation timing (DAC/PWM clocks) or an error in the oscilloscope's sampling rate calculation.
+* **Status:** Under investigation.
 
-The project launches a dedicated WiFi Access Point (or connects to your existing network) and serves a responsive web interface for signal visualization, complete with trigger controls and sample rate adjustments.
+## Overview
+ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser using the ESP32's internal ADC. It now includes a built-in **Function Generator** capable of producing Square, Sine, and Triangle waves.
+
+The project launches a dedicated WiFi Access Point (or connects to your existing network) and serves a responsive web interface for signal visualization and generation.
 
 ## Hardware Configuration
-This fork is pre-configured for standard ESP32 boards (target `esp32`).
+This firmware is configured for standard ESP32 boards (target `esp32`).
 
-| Function | Pin | Note |
+| Function | Pin | Description |
 | :--- | :--- | :--- |
-| **Signal Input** | **GPIO 36** (VP) | ADC1 Channel 0 |
-| **Test Signal** | **GPIO 25** | Generates a square wave for testing |
-| **Status LED** | **GPIO 2** | Standard onboard LED |
+| **Signal Input** | **GPIO 36** (VP) | ADC1 Channel 0. The probe input. |
+| **Func Gen Output**| **GPIO 25** | DAC1. Outputs Square, Sine, or Triangle waves. |
+| **Status LED** | **GPIO 2** | Standard onboard LED. |
 | **Mode Button** | **GPIO 0** | "Boot" button. Hold to reset WiFi settings. |
 
-*Note: Ensure your input voltage does not exceed 3.3V (or the attenuated limit if settings are changed).*
+*Note: Ensure your input voltage on GPIO 36 does not exceed 3.3V.*
 
 ## Features
 - **Real-time Visualization**: High-speed plotting via WebSockets.
-- **Adjustable Settings**: Sample rate (up to ~83kHz), attenuation, and bit width.
+- **Function Generator**:
+  - **Square Wave**: Generated via PWM (LEDC).
+  - **Sine Wave**: Generated via internal Hardware Cosine Generator (CWG).
+  - **Triangle Wave**: Generated via DAC software timer.
+  - *Note: All outputs are on GPIO 25.*
+- **Adjustable Scope Settings**: Sample rate, attenuation, and bit width.
 - **Triggering**: Software trigger with adjustable level and rising/falling edge detection.
-- **Math**: Delta measurements (Voltage/Time) using mouse-over crosshairs.
-- **Test Signal**: Built-in square wave generator on GPIO 25.
-- **WiFi Management**: Functions as an AP (`ESP-Scope`) by default; can connect to an existing network via the Web UI.
+- **WiFi Management**:
+  - Functions as an AP (`ESP-Scope`) by default.
+  - Can connect to an existing network via the Web UI.
+  - Captive portal support for easy configuration.
 
 ## Getting Started
 
@@ -37,9 +50,9 @@ This fork is pre-configured for standard ESP32 boards (target `esp32`).
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/aarushmagic/esp-scope.git
+   git clone [https://github.com/aarushmagic/esp-scope.git](https://github.com/aarushmagic/esp-scope.git)
    cd esp-scope
-   ```
+   ```   
 2. **Set the target to ESP32:**
    ```bash
    idf.py set-target esp32
@@ -60,12 +73,16 @@ This fork is pre-configured for standard ESP32 boards (target `esp32`).
    * Alternatively, monitor the Serial output to see the IP address if you configured station mode.
 2. Open the Interface:
    * Navigate to http://esp-scope (or http://192.168.4.1 if using the AP).
-3. Controls:
+   * If the page does not load, try disabling mobile data or disconnect from other networks.
+3. Oscilloscope Tab:
    * Rate: Adjust the sampling frequency.
    * Atten: Change ADC attenuation (input range).
-   * TestHz: Change the frequency of the square wave on GPIO 25.
    * WiFi Button: Configure the device to connect to your home router.
    * Reset Button: Hold the physical BOOT button (GPIO 0) on the device to wipe WiFi settings and return to AP mode.
+4. Func Gen Tab:
+   * Wave: Select Square, Sine, or Triangle.
+   * Freq: Set the target frequency (see Limitations above).
+   * Amp: Adjust amplitude (0-100%).
 
 ### LED Status Codes
 * Solid: Starting up or connecting.
