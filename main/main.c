@@ -31,6 +31,8 @@
 // For IDF 5.x, dac_oneshot is preferred.
 #include "driver/dac_cosine.h"
 #include "driver/dac_oneshot.h"
+#include "mdns.h"
+
 
 #endif
 
@@ -767,7 +769,24 @@ static esp_err_t http_404_error_handler(httpd_req_t *req,
   return ESP_OK;
 }
 
+static void start_mdns_service() {
+  esp_err_t err = mdns_init();
+  if (err) {
+    ESP_LOGE(TAG, "MDNS Init failed: %d", err);
+    return;
+  }
+  ESP_ERROR_CHECK(mdns_hostname_set("esp-scope"));
+  ESP_ERROR_CHECK(mdns_instance_name_set("ESP32 Oscilloscope"));
+  ESP_LOGI(TAG, "MDNS Init Complete. Hostname: esp-scope");
+
+  // Add service for HTTP
+  mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+}
+
 static void start_webserver(void) {
+  // Init mDNS
+  start_mdns_service();
+
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.lru_purge_enable = true;
 
