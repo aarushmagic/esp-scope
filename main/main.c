@@ -395,11 +395,13 @@ static void update_func_gen() {
     ESP_LOGI(TAG, "Starting Square Wave (LEDC) at %" PRIu32 " Hz", s_func_freq);
 
     // Prepare config
-    ledc_timer_config_t ledc_timer = {.speed_mode = LEDC_LOW_SPEED_MODE,
-                                      .duty_resolution = LEDC_TIMER_10_BIT,
-                                      .timer_num = LEDC_TIMER_0,
-                                      .freq_hz = s_func_freq,
-                                      .clk_cfg = LEDC_AUTO_CLK};
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = (uint32_t)(s_func_freq *
+                              0.82f), // Corrected for Scope Timebase Mismatch
+        .clk_cfg = LEDC_AUTO_CLK};
     ledc_timer_config(&ledc_timer);
 
     ledc_channel_config_t ledc_channel = {
@@ -423,9 +425,9 @@ static void update_func_gen() {
   else if (s_func_type == FUNC_SINE) {
     // Hardware Cosine Generator (Min Freq ~130Hz)
     // RTC Clock is uncalibrated. Applying correction factor.
-    // User reports 161Hz output for 200Hz request. Factor ~1.24x needed.
-    // We apply 1.25x correction.
-    uint32_t corrected_freq = (s_func_freq * 125) / 100;
+    // User reports 2.09ms (478Hz) at 1.02x. Target 500Hz.
+    // New Factor: 1.07x.
+    uint32_t corrected_freq = (uint32_t)(s_func_freq * 1.07f);
 
     if (corrected_freq < 130) {
       corrected_freq = 130;
@@ -465,7 +467,8 @@ static void update_func_gen() {
 
     // Calculate Phase Increment
     // Relax timer to 20kHz (50us) to avoid CPU choke
-    uint64_t val = (uint64_t)s_func_freq * 4294967296ULL;
+    // Apply 0.82x factor to match Square/Scope Timebase
+    uint64_t val = (uint64_t)((float)s_func_freq * 0.82f) * 4294967296ULL;
     s_phase_inc = (uint32_t)(val / 20000);
 
     esp_timer_create_args_t timer_args = {
