@@ -1,5 +1,7 @@
 # ESP-Scope
 
+THIS IS IN PROGRESS. FORKED OFF OF [MatAtBread's ESP-Scope](https://github.com/MatAtBread/esp-scope/). All credits go to original author.
+
 ## Overview
 ESP-Scope is a web-based oscilloscope built using the ESP-IDF framework. It allows users to visualize analog signals in real-time through a web browser. The project leverages the ESP32's ADC capabilities and serves a web interface for signal visualization. It contains complete source code and 3D design for a case for the Seeed XIAO ESP32C6.
 

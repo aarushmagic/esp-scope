@@ -40,8 +40,8 @@ static void start_webserver(void);
 #define ADC_ATTEN ADC_ATTEN_DB_11
 #define ADC_BIT_WIDTH ADC_BITWIDTH_12
 
-#define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE2
-#define ADC_GET_DATA(p_data) ((p_data)->type2.data)
+#define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
+#define ADC_GET_DATA(p_data) ((p_data)->type1.data)
 
 /*
  * Web Server Configuration
@@ -57,8 +57,8 @@ static int s_ws_client_fd = -1;
 
 // Global configuration state
 static volatile bool s_reconfig_needed = false;
-static uint32_t s_sample_rate = 10000;
-static adc_atten_t s_atten = ADC_ATTEN_DB_12;
+static uint32_t s_sample_rate = 20000;
+static adc_atten_t s_atten = ADC_ATTEN_DB_11;
 static adc_bitwidth_t s_bit_width = ADC_BIT_WIDTH;
 static uint16_t s_test_hz = 100;
 
@@ -248,7 +248,7 @@ static void start_test_signal(uint32_t hz) {
       .freq_hz = hz,
       .clk_cfg = LEDC_AUTO_CLK};
   ledc_channel_config_t ledc_channel = {
-      .gpio_num = 1,  // GPIO data pin 1
+      .gpio_num = 25,  // Changed from 1 to 25 to avoid Serial interference
       .speed_mode = LEDC_LOW_SPEED_MODE,
       .channel = LEDC_CHANNEL_0,
       .timer_sel = LEDC_TIMER_0,
@@ -334,9 +334,9 @@ void app_main(void) {
   gpio_set_level(CONFIG_LED_BUILTIN, 0);
 #endif
 
-#ifdef CONFIG_BOARD_SPECIFIC_INIT
-#include CONFIG_BOARD_SPECIFIC_INIT
-#endif
+//#ifdef CONFIG_BOARD_SPECIFIC_INIT
+//#include CONFIG_BOARD_SPECIFIC_INIT
+//#endif
 
   is_ap = wifi_manager_init_wifi();
 
