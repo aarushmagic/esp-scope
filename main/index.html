@@ -230,6 +230,43 @@
             justify-content: flex-end;
             gap: 10px;
         }
+
+        /* Tabs Styles */
+        .tabs-header {
+            display: flex;
+            background: #222;
+            border-bottom: 1px solid #444;
+            margin: -10px -10px 10px -10px;
+            /* Counteract padding of controls-section */
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #888;
+            font-weight: bold;
+            font-size: 0.9em;
+            border-right: 1px solid #333;
+        }
+
+        .tab-btn:hover {
+            color: #ccc;
+            background: #2a2a2a;
+        }
+
+        .tab-btn.active {
+            color: #4ade80;
+            background: #2d2d2d;
+            border-bottom: 2px solid #4ade80;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 
@@ -259,43 +296,72 @@
 
         <!-- Bottom Section: Controls -->
         <div class="controls-section">
-            <div class="controls">
+            <!-- Tabs Header -->
+            <div class="tabs-header">
+                <div class="tab-btn active" data-tab="scope">Oscilloscope</div>
+                <div class="tab-btn" data-tab="funcgen">Func Gen</div>
+            </div>
 
-                <div class="control-group">
-                    <label>Rate(Hz)</label>
-                    <input type="number" id="sampleRate" value="10000" min="1" max="83333">
+            <!-- Tab: Scope Controls -->
+            <div id="tab-scope" class="tab-content active">
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Rate(Hz)</label>
+                        <input type="number" id="sampleRate" value="20000" min="1000" max="100000">
+                    </div>
+
+                    <div class="control-group" style="display: none;">
+                        <label>BitWidth</label>
+                        <select id="bitWidth">
+                            <option value="12" selected>12</option>
+                            <option value="11">11</option>
+                            <option value="10">10</option>
+                            <option value="9">9</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Atten</label>
+                        <select id="atten">
+                            <option value="0">0dB</option>
+                            <option value="1">2.5dB</option>
+                            <option value="2">6dB</option>
+                            <option value="3" selected>11dB</option>
+                        </select>
+                    </div>
+
+                    <div class="btn-group">
+                        <button title="Reset to default rate, attenuation & test settings" id="resetBtn"
+                            class="secondary">&olarr;</button>
+                        <button title="Change wifi access point" id="wifiBtn" class="secondary">&#128732;</button>
+                        <button title="Power off the esp-scope" id="powerOff" class="secondary">&#9889;</button>
+                    </div>
                 </div>
+            </div>
 
-                <div class="control-group" style="display: none;">
-                    <label>BitWidth</label>
-                    <select id="bitWidth">
-                        <option value="12" selected>12</option>
-                        <option value="11">11</option>
-                        <option value="10">10</option>
-                        <option value="9">9</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label>Atten</label>
-                    <select id="atten">
-                        <option value="0">0dB</option>
-                        <option value="1">2.5dB</option>
-                        <option value="2">6dB</option>
-                        <option value="3" selected>11dB</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label>TestHz</label>
-                    <input type="number" id="testHz" value="100" min="1" max="10000">
-                </div>
-
-                <div class="btn-group">
-                    <button title="Reset to default rate, attenuation & test settings" id="resetBtn"
-                        class="secondary">&olarr;</button>
-                    <button title="Change wifi access point" id="wifiBtn" class="secondary">&#128732;</button>
-                    <button title="Power off the esp-scope" id="powerOff" class="secondary">&#9889;</button>
+            <!-- Tab: Function Generator Controls -->
+            <div id="tab-funcgen" class="tab-content">
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Wave</label>
+                        <select id="fgType">
+                            <option value="0">Off</option>
+                            <option value="1" selected>Square (PWM)</option>
+                            <option value="2">Sine (DAC)</option>
+                            <option value="3">Triangle (DAC)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Freq(Hz)</label>
+                        <input type="number" id="fgFreq" value="100" min="1" max="20000">
+                    </div>
+                    <div class="control-group">
+                        <label>Amp(%)</label>
+                        <input type="range" id="fgAmp" value="100" min="0" max="100" style="width: 80px;">
+                    </div>
+                    <div class="btn-group">
+                        <button id="fgUpdate">Set</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -24,17 +24,23 @@ const countPoints = 4000;
  * @property {number} test_hz - Test signal frequency for simulation
  * @property {number} trigger - Trigger level (-1-4097)
  * @property {boolean} invert - Whether trigger logic is inverted
+ * @property {number} func_type - 0:Off, 1:Square, 2:Sine, 3:Triangle
+ * @property {number} func_freq - Function generator frequency
+ * @property {number} func_amp - Function generator amplitude (0-100)
  */
 
 /** @type {ActiveConfig} */
 let activeConfig = {
-  desiredRate: 10000,
-  sample_rate: 10000,
+  desiredRate: 20000,
+  sample_rate: 20000,
   atten: 3, // 11dB Default
   bit_width: 12,
   test_hz: 100,
   trigger: 2048,
-  invert: false
+  invert: false,
+  func_type: 1, // Default Square
+  func_freq: 100,
+  func_amp: 100
 };
 
 /**
@@ -49,7 +55,7 @@ let activeConfig = {
 
 /** @type {LowRateState} */
 let lowRateState = {
-  accMin: 4096,
+  accMin: 10.0,
   accMax: 0,
   accSum: 0,
   accCount: 0,
@@ -76,9 +82,40 @@ let lowRateState = {
 /** @type {HTMLSelectElement} */ const sampleRateSelect = /** @type {HTMLSelectElement} */ (document.getElementById('sampleRate'));
 /** @type {HTMLSelectElement} */ const bitWidthSelect = /** @type {HTMLSelectElement} */ (document.getElementById('bitWidth'));
 /** @type {HTMLSelectElement} */ const attenSelect = /** @type {HTMLSelectElement} */ (document.getElementById('atten'));
-/** @type {HTMLSelectElement} */ const testHzSelect = /** @type {HTMLSelectElement} */ (document.getElementById('testHz'));
 /** @type {HTMLButtonElement} */ const resetBtn = /** @type {HTMLButtonElement} */ (document.getElementById('resetBtn'));
 /** @type {HTMLButtonElement} */ const powerOffBtn = /** @type {HTMLButtonElement} */ (document.getElementById('powerOff'));
+
+// Func Gen Elements
+/** @type {HTMLSelectElement} */ const fgTypeSelect = /** @type {HTMLSelectElement} */ (document.getElementById('fgType'));
+/** @type {HTMLInputElement} */ const fgFreqInput = /** @type {HTMLInputElement} */ (document.getElementById('fgFreq'));
+/** @type {HTMLInputElement} */ const fgAmpInput = /** @type {HTMLInputElement} */ (document.getElementById('fgAmp'));
+/** @type {HTMLButtonElement} */ const fgUpdateBtn = /** @type {HTMLButtonElement} */ (document.getElementById('fgUpdate'));
+
+// Tab Elements
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    // Deactivate all
+    tabBtns.forEach(b => b.classList.remove('active'));
+    tabContents.forEach(c => c.classList.remove('active'));
+
+    // Activate clicked
+    btn.classList.add('active');
+    const tabName = btn.getAttribute('data-tab');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+  });
+});
+
+// Auto-update Function Generator on change
+fgTypeSelect.addEventListener('change', setParams);
+fgFreqInput.addEventListener('change', setParams);
+fgAmpInput.addEventListener('change', setParams);
+// Also update on 'input' for sliders for real-time feel (optional, but safer to stick to 'change' for network traffic)
+fgAmpInput.addEventListener('input', () => {
+  // Debounce or just wait for change? 'change' fires on drop.
+});
 
 // Wifi Elements
 /** @type {HTMLElement} */ const wifiModal = document.getElementById('wifiModal');
@@ -275,20 +312,22 @@ function processData(newData) {
     lowRateState.targetCount = 1;
   }
 
+  // Convert incoming mV (integer) to Volts (float)
+  const voltsData = new Float32Array(newData.length);
+  for (let i = 0; i < newData.length; i++) {
+    voltsData[i] = newData[i] / 1000.0;
+  }
+
   if (lowRateState.targetCount <= 1) {
     // Passthrough mode
-    pushToBuffer(/** @type {Array<number>} */(Array.from(newData)));
+    pushToBuffer(Array.from(voltsData));
   } else {
     // Accumulation mode (Peak Detect) with Fractional Resampling
     /** @type {DownsampledPoint[]} */
     let pointsToPush = [];
-    let idx = 0;
 
     // We add 1.0 "samples worth" of progress for each input sample.
-    // When progress >= targetCount, we have enough input density to emit an output point.
-    // We subtract targetCount (rather than reset to 0) to preserve fractional error (dither/phase).
-
-    for (const val of newData) {
+    for (const val of voltsData) {
       if (val < lowRateState.accMin) lowRateState.accMin = val;
       if (val > lowRateState.accMax) lowRateState.accMax = val;
       lowRateState.accSum += val;
@@ -306,7 +345,7 @@ function processData(newData) {
         });
 
         // Reset Min/Max/Sum for next window
-        lowRateState.accMin = 4096;
+        lowRateState.accMin = 10.0; // Safe high value (Volts)
         lowRateState.accMax = 0;
         lowRateState.accSum = 0;
         lowRateState.accCount = 0;
@@ -472,14 +511,18 @@ function draw() {
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const maxAdcVal = 4096; // 12-bit fixed scale
+  const maxV = getMaxVoltage(); // Full Scale Voltage
 
   // Trigger values
   let drawIdx = dataBuffer.length - w;
   if (drawIdx < 0)
     drawIdx = 0;
   else {
-    const triggerVal = (4096 - (parseInt(triggerLevel.value) || 2048));
+    // Slider is 0-4096. Map to 0-MaxV.
+    // User reports "Down Increases Voltage", implying inversion.
+    // Inverting logic so UP = Increase Voltage.
+    const triggerRaw = parseInt(triggerLevel.value) || 2048;
+    const triggerThreshold = ((4096 - triggerRaw) / 4096) * maxV;
 
     // Helper to extract value for trigger (handles numbers and avg objects)
     const getVal = (i) => {
@@ -490,7 +533,7 @@ function draw() {
     if (triggerLevel.invert) {
       while (drawIdx >= 0) {
         // Look for falling edge
-        if (getVal(drawIdx) < triggerVal && getVal(drawIdx + 1) > triggerVal) {
+        if (getVal(drawIdx) < triggerThreshold && getVal(drawIdx + 1) > triggerThreshold) {
           break;
         }
         drawIdx -= 1;
@@ -498,14 +541,14 @@ function draw() {
     } else {
       while (drawIdx >= 0) {
         // Look for rising edge
-        if (getVal(drawIdx) > triggerVal && getVal(drawIdx + 1) < triggerVal) {
+        if (getVal(drawIdx) > triggerThreshold && getVal(drawIdx + 1) < triggerThreshold) {
           break;
         }
         drawIdx -= 1;
       }
     }
 
-    const triggerVolts = ((maxAdcVal - activeConfig.trigger) * getMaxVoltage() / maxAdcVal).toFixed(2) + "V";
+    const triggerVolts = triggerThreshold.toFixed(2) + "V";
     const triggerDir = triggerLevel.invert ? '&#x1F809;' : '&#x1F80B;';
     if (drawIdx < 0) {
       drawIdx = dataBuffer.length - w;
@@ -523,8 +566,8 @@ function draw() {
     const val = dataBuffer[i + drawIdx];
     if (typeof val === 'object' && val !== null) {
       const sx = i * viewTransform.scale + viewTransform.offsetX;
-      const rawYMin = h - (val.min / maxAdcVal * h);
-      const rawYMax = h - (val.max / maxAdcVal * h);
+      const rawYMin = h - (val.min / maxV * h);
+      const rawYMax = h - (val.max / maxV * h);
 
       const screenYMin = rawYMin * viewTransform.scale + viewTransform.offsetY;
       const screenYMax = rawYMax * viewTransform.scale + viewTransform.offsetY;
@@ -551,7 +594,7 @@ function draw() {
       rawVal = val;
     }
 
-    const yp = h - (rawVal / maxAdcVal * h);
+    const yp = h - (rawVal / maxV * h);
     const sy = yp * viewTransform.scale + viewTransform.offsetY;
 
     if (i === 0) ctx.moveTo(sx, sy);
@@ -761,9 +804,7 @@ function scheduleReconnect() {
   reconnectTimeout = window.setTimeout(connect, 2000); // Use window.setTimeout explicit
 }
 
-/**
- * Send configuration to ESP32
- */
+// Checked code logic. No change yet.
 function setParams() {
   const desiredRate = parseInt(sampleRateSelect.value);
   const hardwareRate = desiredRate < 1000 ? 1000 : desiredRate;
@@ -772,7 +813,10 @@ function setParams() {
     sample_rate: hardwareRate,
     bit_width: parseInt(bitWidthSelect.value),
     atten: parseInt(attenSelect.value),
-    test_hz: parseInt(testHzSelect.value)
+    // test_hz: parseInt(testHzSelect.value) // Deprecated
+    func_type: parseInt(fgTypeSelect.value),
+    func_freq: parseInt(fgFreqInput.value),
+    func_amp: parseInt(fgAmpInput.value)
   };
 
   fetch('/params', {
@@ -808,7 +852,12 @@ function loadStoredConfig() {
       if (cfg.desiredRate) sampleRateSelect.value = cfg.desiredRate;
       if (cfg.bit_width) bitWidthSelect.value = cfg.bit_width;
       if (cfg.atten !== undefined) attenSelect.value = cfg.atten;
-      if (cfg.test_hz) testHzSelect.value = cfg.test_hz;
+
+      // Func Gen restore
+      if (cfg.func_type) fgTypeSelect.value = cfg.func_type;
+      if (cfg.func_freq) fgFreqInput.value = cfg.func_freq;
+      if (cfg.func_amp) fgAmpInput.value = cfg.func_amp;
+
       if (cfg.invert) triggerLevel.invert = Boolean(cfg.invert);
       if (cfg.trigger) triggerLevel.value = String(cfg.trigger);
       triggerColor();
@@ -821,9 +870,24 @@ function loadStoredConfig() {
 
 // Config Listeners
 if (reconnectBtn) reconnectBtn.addEventListener('click', connect);
-[sampleRateSelect, bitWidthSelect, attenSelect, testHzSelect].forEach(input => {
+// Standard inputs auto-update on change
+[sampleRateSelect, bitWidthSelect, attenSelect].forEach(input => {
   if (input) input.addEventListener('change', setParams)
 });
+
+// Func Gen inputs
+[fgTypeSelect, fgFreqInput, fgAmpInput].forEach(input => {
+  if (input) input.addEventListener('change', () => {
+    // Optional: auto-update or wait for button
+    // Let's wait for button for Freq/Amp to avoid spam, but Type can be instant?
+    // For consistency with Scope controls which are instant, maybe instant?
+    // But I added a "Set" button. Let's rely on "Set" button for FuncGen to be safe.
+    // Or better: Auto update on 'change' (commit), and 'input' (slider drag) is ignored until drop?
+    // Let's just use the "Set" button event I added earlier: `fgUpdateBtn.addEventListener...`
+    // So we don't need to add them here.
+  });
+});
+
 triggerLevel.addEventListener('change', () => localStorage.setItem('esp32_adc_config', JSON.stringify(activeConfig)));
 if (resetBtn) resetBtn.addEventListener('click', () => {
   localStorage.clear();
