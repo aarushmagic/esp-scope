@@ -33,7 +33,6 @@
 #include "driver/dac_oneshot.h"
 #include "mdns.h"
 
-
 #endif
 
 // Tag for logging
@@ -397,12 +396,16 @@ static void update_func_gen() {
     ESP_LOGI(TAG, "Starting Square Wave (LEDC) at %" PRIu32 " Hz", s_func_freq);
 
     // Prepare config
+    // Round to nearest integer to fix 1Hz/2Hz truncation issues
+    uint32_t sq_freq = (uint32_t)(s_func_freq * 0.82f + 0.5f);
+    if (sq_freq == 0 && s_func_freq > 0)
+      sq_freq = 1;
+
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_10_BIT,
         .timer_num = LEDC_TIMER_0,
-        .freq_hz = (uint32_t)(s_func_freq *
-                              0.82f), // Corrected for Scope Timebase Mismatch
+        .freq_hz = sq_freq, // Corrected for Scope Timebase Mismatch
         .clk_cfg = LEDC_AUTO_CLK};
     ledc_timer_config(&ledc_timer);
 
@@ -430,18 +433,21 @@ static void update_func_gen() {
     // User reports 2.09ms (478Hz) at 1.02x. Target 500Hz.
     // New Factor: 1.07x.
     uint32_t corrected_freq = (uint32_t)(s_func_freq * 1.07f);
+    ESP_LOGW(TAG, "DEBUG: SINE Req=%ld Hz, Factor=1.07, Set=%ld Hz",
+             s_func_freq, corrected_freq);
 
     if (corrected_freq < 130) {
       corrected_freq = 130;
       ESP_LOGW(TAG, "Clamped Sine Freq to 130Hz");
     }
     ESP_LOGI(TAG,
-             "Starting Hardware Cosine at %" PRIu32 " Hz (Target %" PRIu32 ")",
+             "Starting Hardware Cosine (RTC_FAST) at %" PRIu32
+             " Hz (Target %" PRIu32 ")",
              corrected_freq, s_func_freq);
 
     dac_cosine_config_t cos_cfg = {.chan_id = DAC_CHAN_0,
                                    .freq_hz = corrected_freq,
-                                   .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
+                                   .clk_src = DAC_COSINE_CLK_SRC_RTC_FAST,
                                    .offset = 0,
                                    .phase = DAC_COSINE_PHASE_0,
                                    .atten = DAC_COSINE_ATTEN_DEFAULT,
