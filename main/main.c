@@ -21,6 +21,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "soc/soc_caps.h"
 #include "wifi_manager.h"
@@ -128,6 +129,62 @@ static adc_atten_t s_atten = ADC_ATTEN_DB_11;
 static adc_bitwidth_t s_bit_width = ADC_BIT_WIDTH;
 // static uint16_t s_test_hz = 100; // Removed/Unused
 
+// Calibration Globals (Persisted in NVS)
+static float g_cal_sq = 0.82f;
+static float g_cal_sin = 1.20f;
+static float g_cal_tri = 0.82f;
+static float g_cal_m = 1.0f; // Scope Slope
+static float g_cal_c = 0.0f; // Scope Offset (mV)
+
+static void save_calibration() {
+  nvs_handle_t my_handle;
+  esp_err_t err = nvs_open("cal_data", NVS_READWRITE, &my_handle);
+  if (err == ESP_OK) {
+    nvs_set_blob(my_handle, "cal_sq", &g_cal_sq, sizeof(float));
+    nvs_set_blob(my_handle, "cal_sin", &g_cal_sin, sizeof(float));
+    nvs_set_blob(my_handle, "cal_tri", &g_cal_tri, sizeof(float));
+    nvs_set_blob(my_handle, "cal_m", &g_cal_m, sizeof(float));
+    nvs_set_blob(my_handle, "cal_c", &g_cal_c, sizeof(float));
+    nvs_commit(my_handle);
+    nvs_close(my_handle);
+    ESP_LOGI(TAG, "Calibration Saved");
+  }
+}
+
+static void load_calibration() {
+  nvs_handle_t my_handle;
+  esp_err_t err = nvs_open("cal_data", NVS_READONLY, &my_handle);
+  if (err == ESP_OK) {
+    size_t size = sizeof(float);
+    nvs_get_blob(my_handle, "cal_sq", &g_cal_sq, &size);
+    nvs_get_blob(my_handle, "cal_sin", &g_cal_sin, &size);
+    nvs_get_blob(my_handle, "cal_tri", &g_cal_tri, &size);
+    nvs_get_blob(my_handle, "cal_m", &g_cal_m, &size);
+    nvs_get_blob(my_handle, "cal_c", &g_cal_c, &size);
+    nvs_close(my_handle);
+    ESP_LOGI(TAG,
+             "Calibration Loaded: Sq=%.2f, Sin=%.2f, Tri=%.2f, m=%.2f, c=%.2f",
+             g_cal_sq, g_cal_sin, g_cal_tri, g_cal_m, g_cal_c);
+  } else {
+    ESP_LOGW(TAG, "Calibration NVS Missing, using defaults");
+  }
+}
+
+static void reset_calibration() {
+  g_cal_sq = 0.82f;
+  g_cal_sin = 1.20f;
+  g_cal_tri = 0.82f;
+  g_cal_m = 1.0f;
+  g_cal_c = 0.0f;
+  nvs_handle_t my_handle;
+  if (nvs_open("cal_data", NVS_READWRITE, &my_handle) == ESP_OK) {
+    nvs_erase_all(my_handle);
+    nvs_commit(my_handle);
+    nvs_close(my_handle);
+    ESP_LOGI(TAG, "Calibration Reset to Defaults");
+  }
+}
+
 // Forward declarations
 static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num,
                                 adc_continuous_handle_t *out_handle);
@@ -227,21 +284,10 @@ static void adc_read_task(void *arg) {
           adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
           uint32_t val = ADC_GET_DATA(p);
 
-          // Apply Calibration (Raw -> Voltage mV)
-          int voltage = 0;
-          if (s_adc_cali_handle) {
-            ESP_ERROR_CHECK(
-                adc_cali_raw_to_voltage(s_adc_cali_handle, val, &voltage));
-          } else {
-            // Fallback Linear
-            voltage = val * 3300 / 4096;
-          }
-
-          // Fix Ground Offset: Trace calibration often has intercept > 0
-          if (val == 0)
-            voltage = 0;
-
-          out_buf[out_idx++] = (uint16_t)voltage;
+          // Send Raw ADC Count directly
+          // Frontend handles conversion to Voltage (Linear, Factory LUT, or
+          // User Cal)
+          out_buf[out_idx++] = (uint16_t)val;
         }
 
         if (out_idx > 0) {
@@ -397,16 +443,16 @@ static void update_func_gen() {
 
     // Prepare config
     // Round to nearest integer to fix 1Hz/2Hz truncation issues
-    uint32_t sq_freq = (uint32_t)(s_func_freq * 0.82f + 0.5f);
+    uint32_t sq_freq = (uint32_t)(s_func_freq * g_cal_sq + 0.5f);
     if (sq_freq == 0 && s_func_freq > 0)
       sq_freq = 1;
 
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_10_BIT,
-        .timer_num = LEDC_TIMER_0,
-        .freq_hz = sq_freq, // Corrected for Scope Timebase Mismatch
-        .clk_cfg = LEDC_AUTO_CLK};
+    ledc_timer_config_t ledc_timer = {.speed_mode = LEDC_LOW_SPEED_MODE,
+                                      .duty_resolution = LEDC_TIMER_10_BIT,
+                                      .timer_num = LEDC_TIMER_0,
+                                      .freq_hz =
+                                          sq_freq, // Corrected via NVS Factor
+                                      .clk_cfg = LEDC_AUTO_CLK};
     ledc_timer_config(&ledc_timer);
 
     ledc_channel_config_t ledc_channel = {
@@ -429,12 +475,10 @@ static void update_func_gen() {
 #if SOC_DAC_SUPPORTED
   else if (s_func_type == FUNC_SINE) {
     // Hardware Cosine Generator (Min Freq ~130Hz)
-    // RTC Clock is uncalibrated. Applying correction factor.
-    // User reports 2.09ms (478Hz) at 1.02x. Target 500Hz.
-    // New Factor: 1.07x.
-    uint32_t corrected_freq = (uint32_t)(s_func_freq * 1.07f);
-    ESP_LOGW(TAG, "DEBUG: SINE Req=%ld Hz, Factor=1.07, Set=%ld Hz",
-             s_func_freq, corrected_freq);
+    // RTC Clock is uncalibrated. Applying correction factor (NVS).
+    uint32_t corrected_freq = (uint32_t)(s_func_freq * g_cal_sin);
+    ESP_LOGW(TAG, "DEBUG: SINE Req=%ld Hz, Factor=%.2f, Set=%ld Hz",
+             s_func_freq, g_cal_sin, corrected_freq);
 
     if (corrected_freq < 130) {
       corrected_freq = 130;
@@ -475,8 +519,8 @@ static void update_func_gen() {
 
     // Calculate Phase Increment
     // Relax timer to 20kHz (50us) to avoid CPU choke
-    // Apply 0.82x factor to match Square/Scope Timebase
-    uint64_t val = (uint64_t)((float)s_func_freq * 0.82f) * 4294967296ULL;
+    // Apply NVS factor to match Square/Scope Timebase
+    uint64_t val = (uint64_t)((float)s_func_freq * g_cal_tri) * 4294967296ULL;
     s_phase_inc = (uint32_t)(val / 20000);
 
     esp_timer_create_args_t timer_args = {
@@ -557,6 +601,7 @@ void app_main(void) {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
+  load_calibration();
 
 #ifdef CONFIG_LED_BUILTIN
   gpio_config_t led_io_conf = {.pin_bit_mask = (1ULL << CONFIG_LED_BUILTIN),
@@ -710,6 +755,100 @@ static const httpd_uri_t uri_params = {.uri = "/params",
                                        .handler = params_handler,
                                        .user_ctx = NULL};
 
+/*
+ * Calibration Params Handler (GET/POST /calibration)
+ */
+static esp_err_t calibration_handler(httpd_req_t *req) {
+  if (req->method == HTTP_GET) {
+    // Generate Factory LUT (17 points: 0, 256... 4096)
+    int lut[17];
+    for (int i = 0; i < 17; i++) {
+      int raw = i * 256;
+      if (raw > 4095)
+        raw = 4095;
+      int mv = 0;
+      if (s_adc_cali_handle) {
+        adc_cali_raw_to_voltage(s_adc_cali_handle, raw, &mv);
+      } else {
+        // Fallback Linear: Assume 3.3V max for simplicity if no cal (rare)
+        // The frontend getMaxVoltage should align with this fallback if needed.
+        // But s_adc_cali_handle should exist on C6.
+        mv = raw * 3300 / 4096;
+      }
+      lut[i] = mv;
+    }
+
+    char lut_str[200];
+    char *ptr = lut_str;
+    ptr += sprintf(ptr, "\"lut\":[");
+    for (int i = 0; i < 17; i++) {
+      ptr += sprintf(ptr, "%d%s", lut[i], (i < 16) ? "," : "");
+    }
+    ptr += sprintf(ptr, "]");
+
+    char buf[512];
+    snprintf(
+        buf, sizeof(buf),
+        "{%s,\"cal_sq\":%.2f,\"cal_sin\":%.2f,\"cal_tri\":%.2f,\"cal_m\":%.2f,"
+        "\"cal_c\":%.2f}",
+        lut_str, g_cal_sq, g_cal_sin, g_cal_tri, g_cal_m, g_cal_c);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, buf, strlen(buf));
+    return ESP_OK;
+  } else if (req->method == HTTP_POST) {
+    char buf[256];
+    int ret, remaining = req->content_len;
+    if (remaining >= sizeof(buf)) {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+    ret = httpd_req_recv(req, buf, remaining);
+    if (ret <= 0)
+      return ESP_FAIL;
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root) {
+      // Check for reset
+      cJSON *reset = cJSON_GetObjectItem(root, "reset");
+      if (reset && cJSON_IsTrue(reset)) {
+        reset_calibration();
+      } else {
+        // Update values if present
+        cJSON *sq = cJSON_GetObjectItem(root, "cal_sq");
+        if (sq)
+          g_cal_sq = (float)sq->valuedouble;
+        cJSON *sin = cJSON_GetObjectItem(root, "cal_sin");
+        if (sin)
+          g_cal_sin = (float)sin->valuedouble;
+        cJSON *tri = cJSON_GetObjectItem(root, "cal_tri");
+        if (tri)
+          g_cal_tri = (float)tri->valuedouble;
+        cJSON *m = cJSON_GetObjectItem(root, "cal_m");
+        if (m)
+          g_cal_m = (float)m->valuedouble;
+        cJSON *c = cJSON_GetObjectItem(root, "cal_c");
+        if (c)
+          g_cal_c = (float)c->valuedouble;
+
+        save_calibration();
+      }
+      cJSON_Delete(root);
+      httpd_resp_send(req, "OK", 2);
+    } else {
+      httpd_resp_send_500(req);
+    }
+    return ESP_OK;
+  }
+  return ESP_FAIL;
+}
+
+static const httpd_uri_t uri_cal = {.uri = "/calibration",
+                                    .method = HTTP_ANY,
+                                    .handler = calibration_handler,
+                                    .user_ctx = NULL};
+
 /* Handler for serving index.html */
 static esp_err_t index_handler(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html");
@@ -803,6 +942,7 @@ static void start_webserver(void) {
     httpd_register_uri_handler(s_server, &uri_index_js);
     httpd_register_uri_handler(s_server, &uri_ws);
     httpd_register_uri_handler(s_server, &uri_params);
+    httpd_register_uri_handler(s_server, &uri_cal);
 
     // Register WiFi Manager endpoints
     wifi_manager_register_uri(s_server);

@@ -329,8 +329,17 @@
                             <option value="3" selected>11dB</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <label>View</label>
+                        <select id="calToggle">
+                            <option value="raw">Raw</option>
+                            <option value="cal" selected>Calibrated</option>
+                        </select>
+                    </div>
 
                     <div class="btn-group">
+                        <button title="Calibrate Voltage" id="calScopeBtn" class="secondary"
+                            style="filter: grayscale(100%);">&#128736;</button>
                         <button title="Reset to default rate, attenuation & test settings" id="resetBtn"
                             class="secondary">&olarr;</button>
                         <button title="Change wifi access point" id="wifiBtn" class="secondary">&#128732;</button>
@@ -360,7 +369,11 @@
                         <input type="range" id="fgAmp" value="100" min="0" max="100" style="width: 80px;">
                     </div>
                     <div class="btn-group">
-                        <button id="fgUpdate">Set</button>
+                        <button title="Calibrate Frequency" id="calFuncBtn" class="secondary"
+                            style="filter: grayscale(100%);">&#128736;</button>
+                        <button title="Reset to default" id="fgResetBtn" class="secondary">&olarr;</button>
+                        <button title="Wi-Fi" id="fgWifiBtn" class="secondary">&#128732;</button>
+                        <button title="Power off" id="fgPowerBtn" class="secondary">&#9889;</button>
                     </div>
                 </div>
             </div>
@@ -382,6 +395,40 @@
             <div class="modal-actions">
                 <button id="closeWifi" style="background:#555; color:#fff;">Cancel</button>
                 <button id="saveWifi">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scope Calibration Modal -->
+    <div id="scopeCalModal" class="modal">
+        <div class="modal-content" style="width: 350px;">
+            <div class="modal-header">Voltage Calibration</div>
+            <p style="font-size:0.8em; color:#bbb;">Add 2-4 points (Measured on Scope vs Actual Voltage).</p>
+            <div id="calPointsList" style="margin-bottom:10px;"></div>
+            <button id="addCalPoint" class="secondary" style="width:100%; margin-bottom:10px;">+ Add Point</button>
+            <div class="modal-actions">
+                <button id="closeScopeCal" style="background:#555; color:#fff;">Cancel</button>
+                <button id="saveScopeCal">Calculate & Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Func Gen Calibration Modal -->
+    <div id="funcCalModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Freq Calibration</div>
+            <p style="font-size:0.8em; color:#bbb;">Tune the internal factor for the current wave.</p>
+            <div class="form-group">
+                <label>Target Freq (Hz)</label>
+                <input type="number" id="calTargetHz" value="200">
+            </div>
+            <div class="form-group">
+                <label>Actual Output (Hz)</label>
+                <input type="number" id="calActualHz" placeholder="Measure on Scope">
+            </div>
+            <div class="modal-actions">
+                <button id="closeFuncCal" style="background:#555; color:#fff;">Cancel</button>
+                <button id="saveFuncCal">Update Factor</button>
             </div>
         </div>
     </div>

@@ -1,5 +1,30 @@
 /// <reference lib="dom" />
 
+// Calibration Globals
+let g_cal_data = { cal_sq: 0.82, cal_sin: 1.20, cal_tri: 0.82, cal_m: 1.0, cal_c: 0.0, lut: [] };
+let scope_points = []; // {meas, act}
+
+function interpolateLut(raw) {
+  if (!g_cal_data.lut || g_cal_data.lut.length < 17) return raw * 3.3 / 4096; // Fallback
+  let idx = Math.floor(raw / 256);
+  if (idx >= 16) return g_cal_data.lut[16] / 1000.0;
+  let val1 = g_cal_data.lut[idx];
+  let val2 = g_cal_data.lut[idx + 1];
+  let frac = (raw % 256) / 256.0;
+  return (val1 + (val2 - val1) * frac) / 1000.0;
+}
+
+// Fetch calibration on load
+fetch('/calibration').then(r => r.json()).then(d => {
+  if (d.cal_sq !== undefined) g_cal_data = d;
+  if (d.lut) g_cal_data.lut = d.lut;
+  console.log("Cal Data:", g_cal_data);
+  initCalUI();
+}).catch(e => {
+  console.log("Cal fetch error", e);
+  initCalUI();
+});
+
 /*
  * ==========================================
  * 1. Constants & Configuration
@@ -108,13 +133,17 @@ tabBtns.forEach(btn => {
   });
 });
 
-// Auto-update Function Generator on change
-fgTypeSelect.addEventListener('change', setParams);
-fgFreqInput.addEventListener('change', setParams);
-fgAmpInput.addEventListener('change', setParams);
-// Also update on 'input' for sliders for real-time feel (optional, but safer to stick to 'change' for network traffic)
-fgAmpInput.addEventListener('input', () => {
-  // Debounce or just wait for change? 'change' fires on drop.
+// Auto-update Function Generator
+let paramDebounce;
+const debouncedSetParams = () => {
+  clearTimeout(paramDebounce);
+  paramDebounce = setTimeout(setParams, 400);
+};
+
+[fgTypeSelect, fgFreqInput, fgAmpInput].forEach(inp => {
+  if (!inp) return;
+  inp.addEventListener('change', setParams); // Immediate commit
+  if (inp !== fgTypeSelect) inp.addEventListener('input', debouncedSetParams); // Slider drag
 });
 
 // Wifi Elements
@@ -314,8 +343,9 @@ function processData(newData) {
 
   // Convert incoming mV (integer) to Volts (float)
   const voltsData = new Float32Array(newData.length);
+  // Store RAW volts (0-4095). Calibration applied at draw time.
   for (let i = 0; i < newData.length; i++) {
-    voltsData[i] = newData[i] / 1000.0;
+    voltsData[i] = newData[i];
   }
 
   if (lowRateState.targetCount <= 1) {
@@ -513,6 +543,29 @@ function draw() {
 
   const maxV = getMaxVoltage(); // Full Scale Voltage
 
+
+
+  // Calibration Factors
+  const calToggle = document.getElementById('calToggle');
+  const useCal = calToggle && calToggle.value === 'cal';
+  const hasUserCal = (Math.abs(g_cal_data.cal_m - 1.0) > 0.001 || Math.abs(g_cal_data.cal_c) > 0.001);
+
+  const applyCal = (raw) => {
+    if (!useCal) {
+      // Raw Mode: Linear Map 0..4095 -> 0..MaxV
+      return (raw / 4095.0) * maxV;
+    }
+    // Calibrated Mode
+    if (hasUserCal) {
+      // User Cal: Replaces Factory. Formula: Linear(Raw) * m + c.
+      let lin = (raw / 4095.0) * maxV;
+      return lin * g_cal_data.cal_m + g_cal_data.cal_c;
+    } else {
+      // Factory Cal: Use LUT (Interpolated)
+      return interpolateLut(raw);
+    }
+  };
+
   // Trigger values
   let drawIdx = dataBuffer.length - w;
   if (drawIdx < 0)
@@ -520,9 +573,12 @@ function draw() {
   else {
     // Slider is 0-4096. Map to 0-MaxV.
     // User reports "Down Increases Voltage", implying inversion.
-    // Inverting logic so UP = Increase Voltage.
+    // Slider is 0-4096. Max is Top.
+    // Slider is 0-4096. Max is Top (visually).
+    // User reports Up = Lower Voltage. Thus Up = Low Value.
+    // Invert so Up = High Voltage.
     const triggerRaw = parseInt(triggerLevel.value) || 2048;
-    const triggerThreshold = ((4096 - triggerRaw) / 4096) * maxV;
+    const triggerThreshold = 4096 - triggerRaw;
 
     // Helper to extract value for trigger (handles numbers and avg objects)
     const getVal = (i) => {
@@ -548,7 +604,8 @@ function draw() {
       }
     }
 
-    const triggerVolts = triggerThreshold.toFixed(2) + "V";
+    const triggerDisplayV = applyCal(triggerThreshold);
+    const triggerVolts = triggerDisplayV.toFixed(2) + "V";
     const triggerDir = triggerLevel.invert ? '&#x1F809;' : '&#x1F80B;';
     if (drawIdx < 0) {
       drawIdx = dataBuffer.length - w;
@@ -566,8 +623,8 @@ function draw() {
     const val = dataBuffer[i + drawIdx];
     if (typeof val === 'object' && val !== null) {
       const sx = i * viewTransform.scale + viewTransform.offsetX;
-      const rawYMin = h - (val.min / maxV * h);
-      const rawYMax = h - (val.max / maxV * h);
+      const rawYMin = h - (applyCal(val.min) / maxV * h);
+      const rawYMax = h - (applyCal(val.max) / maxV * h);
 
       const screenYMin = rawYMin * viewTransform.scale + viewTransform.offsetY;
       const screenYMax = rawYMax * viewTransform.scale + viewTransform.offsetY;
@@ -594,7 +651,7 @@ function draw() {
       rawVal = val;
     }
 
-    const yp = h - (rawVal / maxV * h);
+    const yp = h - (applyCal(rawVal) / maxV * h);
     const sy = yp * viewTransform.scale + viewTransform.offsetY;
 
     if (i === 0) ctx.moveTo(sx, sy);
@@ -656,7 +713,9 @@ function updateInfo(event) {
   // Use raw coordinates or event helpers
   const voltage = YtoVolts(event.offsetY);
   const timeOffset = XtoTime(event.offsetX);
-  let info = `<div>${voltage.toFixed(3)}V, ${timeOffset.toFixed(2)}ms</div>`;
+  const calToggle = document.getElementById('calToggle');
+  const calMode = (calToggle && calToggle.value === 'cal') ? " (Cal)" : "";
+  let info = `<div>${voltage.toFixed(3)}V${calMode}, ${timeOffset.toFixed(2)}ms</div>`;
 
   // Store the last mouse position
   lastMousePosition.x = event.offsetX;
@@ -832,6 +891,8 @@ function setParams() {
 
       // Update active config
       activeConfig = { ...payload, desiredRate, trigger: parseInt(triggerLevel.value) || 2048, invert: triggerLevel.invert };
+      // Refresh LUT for new attenuation
+      fetch('/calibration').then(r => r.json()).then(d => { if (d.lut) g_cal_data.lut = d.lut; });
 
       // Save to localStorage
       localStorage.setItem('esp32_adc_config', JSON.stringify(activeConfig));
@@ -895,9 +956,159 @@ if (resetBtn) resetBtn.addEventListener('click', () => {
 });
 if (powerOffBtn) powerOffBtn.addEventListener('click', () => window.location.href = "/poweroff");
 
-/**
- * Setup WiFi modal listeners
- */
+// ==========================================
+// 8. Advanced Calibration UI Logic
+// ==========================================
+function initCalUI() {
+  // Toggle Listener
+  const calToggle = document.getElementById('calToggle');
+  if (calToggle) calToggle.addEventListener('change', () => {
+    // Redraw immediately?
+    draw();
+  });
+
+  // --- Scope Calibration ---
+  const calScopeBtn = document.getElementById('calScopeBtn');
+  const scopeModal = document.getElementById('scopeCalModal');
+  const addPointBtn = document.getElementById('addCalPoint');
+  const saveScopeBtn = document.getElementById('saveScopeCal');
+  const closeScopeBtn = document.getElementById('closeScopeCal');
+  const pointsList = document.getElementById('calPointsList');
+
+  // Helper to render points safer
+  const renderPoints = () => {
+    if (!pointsList) return;
+    pointsList.innerHTML = '';
+    scope_points.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = "display:flex; gap:5px; margin-bottom:5px;";
+
+      const inMeas = document.createElement('input');
+      inMeas.type = 'number'; inMeas.placeholder = 'Meas(V)'; inMeas.step = '0.01'; inMeas.value = p.meas;
+      inMeas.oninput = (e) => scope_points[i].meas = parseFloat(e.target.value);
+
+      const inAct = document.createElement('input');
+      inAct.type = 'number'; inAct.placeholder = 'Actual(V)'; inAct.step = '0.01'; inAct.value = p.act;
+      inAct.oninput = (e) => scope_points[i].act = parseFloat(e.target.value);
+
+      const btnDel = document.createElement('button');
+      btnDel.textContent = 'X';
+      btnDel.style.cssText = "background:#cc3333; padding:2px 8px;";
+      btnDel.onclick = () => { scope_points.splice(i, 1); renderPoints(); };
+
+      row.appendChild(inMeas);
+      row.appendChild(inAct);
+      row.appendChild(btnDel);
+      pointsList.appendChild(row);
+    });
+  };
+
+  if (calScopeBtn) calScopeBtn.addEventListener('click', () => {
+    scope_points = []; // Start fresh? Or load existing? 
+    // Loading existing points is hard because we only stored m,c. We dont allow editing points again, just creating new regression.
+    // So Start Fresh is correct.
+    renderPoints();
+    scopeModal.style.display = 'flex';
+  });
+
+  if (closeScopeBtn) closeScopeBtn.addEventListener('click', () => scopeModal.style.display = 'none');
+
+  if (addPointBtn) addPointBtn.addEventListener('click', () => {
+    if (scope_points.length >= 4) return;
+    scope_points.push({ meas: 0, act: 0 });
+    renderPoints();
+  });
+
+  if (saveScopeBtn) saveScopeBtn.addEventListener('click', () => {
+    if (scope_points.length < 2) { alert("Need at least 2 points"); return; }
+    // Linear Regression
+    let n = scope_points.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (let p of scope_points) {
+      if (isNaN(p.meas) || isNaN(p.act)) { alert("Invalid values"); return; }
+      sumX += p.meas;
+      sumY += p.act;
+      sumXY += p.meas * p.act;
+      sumXX += p.meas * p.meas;
+    }
+    // Denominator
+    let denom = (n * sumXX - sumX * sumX);
+    if (Math.abs(denom) < 0.0001) { alert("Points align vertically? Cannot calc slope."); return; }
+
+    let m = (n * sumXY - sumX * sumY) / denom;
+    let c = (sumY - m * sumX) / n;
+
+    g_cal_data.cal_m = m;
+    g_cal_data.cal_c = c;
+
+    // Post to Server
+    fetch('/calibration', {
+      method: 'POST',
+      body: JSON.stringify({ cal_m: m, cal_c: c })
+    }).then(r => {
+      if (r.ok) { scopeModal.style.display = 'none'; alert(`Saved! m=${m.toFixed(4)}, c=${c.toFixed(4)}`); }
+    });
+  });
+
+  // --- Func Gen Calibration ---
+  const calFuncBtn = document.getElementById('calFuncBtn');
+  const funcModal = document.getElementById('funcCalModal');
+  const saveFuncBtn = document.getElementById('saveFuncCal');
+  const closeFuncBtn = document.getElementById('closeFuncCal');
+
+  if (calFuncBtn) calFuncBtn.addEventListener('click', () => {
+    document.getElementById('calTargetHz').value = activeConfig.func_freq;
+    funcModal.style.display = 'flex';
+  });
+  if (closeFuncBtn) closeFuncBtn.addEventListener('click', () => funcModal.style.display = 'none');
+
+  if (saveFuncBtn) saveFuncBtn.addEventListener('click', () => {
+    const target = parseFloat(document.getElementById('calTargetHz').value);
+    const actual = parseFloat(document.getElementById('calActualHz').value);
+    if (!target || !actual) return;
+
+    const ratio = target / actual;
+    const type = parseInt(fgTypeSelect.value);
+    let key = '';
+    let currentFactor = 1.0;
+
+    if (type === 1) { key = 'cal_sq'; currentFactor = g_cal_data.cal_sq; }
+    else if (type === 2) { key = 'cal_sin'; currentFactor = g_cal_data.cal_sin; }
+    else if (type === 3) { key = 'cal_tri'; currentFactor = g_cal_data.cal_tri; }
+    else { alert("Select a wave type first"); return; }
+
+    const newFactor = currentFactor * ratio;
+    g_cal_data[key] = newFactor;
+
+    let payload = {};
+    payload[key] = newFactor;
+
+    fetch('/calibration', { method: 'POST', body: JSON.stringify(payload) })
+      .then(r => {
+        if (r.ok) { funcModal.style.display = 'none'; alert(`Updated Factor: ${currentFactor.toFixed(3)} -> ${newFactor.toFixed(3)}`); setParams(); }
+      });
+  });
+
+  // --- Reset Handlers ---
+  const handleReset = () => {
+    if (confirm("Reset FIRMWARE calibration to defaults?")) {
+      fetch('/calibration', { method: 'POST', body: JSON.stringify({ reset: true }) })
+        .then(r => {
+          localStorage.clear();
+          window.location.reload();
+        });
+    }
+  };
+  const fgReset = document.getElementById('fgResetBtn');
+  if (fgReset) fgReset.addEventListener('click', handleReset);
+
+  // New Menu Buttons
+  const fgWifi = document.getElementById('fgWifiBtn');
+  if (fgWifi) fgWifi.addEventListener('click', () => document.getElementById('wifiModal').style.display = 'flex');
+  const fgPower = document.getElementById('fgPowerBtn');
+  if (fgPower) fgPower.addEventListener('click', () => window.location.href = "/poweroff");
+}
+
 function setupWifiListeners() {
   if (wifiBtn) wifiBtn.onclick = () => {
     wifiModal.style.display = "flex";
