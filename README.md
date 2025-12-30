@@ -4,9 +4,8 @@ This is a fork of [MatAtBread's ESP-Scope](https://github.com/MatAtBread/esp-sco
 
 ## ⚠️ Known Limitations
 **Frequency Mismatch:**
-There is currently a known issue where the frequency of the generated waveform does not match the frequency measured by the oscilloscope.
-* **Symptoms:** You will see the correct wave **shape** (Sine, Square, Triangle), but the frequency displayed on the scope (or the period of the wave) may differ significantly from the frequency you requested in the "Func Gen" tab.
-* **Cause:** It is currently undetermined if this is due to an error in the signal generation timing (DAC/PWM clocks) or an error in the oscilloscope's sampling rate calculation.
+There is currently a known issue where the frequency of the generated sine wave does not properly calibrate.
+* **Symptoms:** You will see the correct wave **shape** (Sine), but the frequency of the wave may differ significantly from the frequency you requested in the "Func Gen" tab. Attempting to use the calibration feature may not fix it.
 * **Status:** Under investigation.
 
 ## Overview
@@ -39,6 +38,32 @@ This firmware is configured for standard ESP32 boards (target `esp32`).
   - Functions as an AP (`ESP-Scope`) by default.
   - Can connect to an existing network via the Web UI.
   - Captive portal support for easy configuration.
+- **Persistent Calibration**: Save voltage and frequency correction factors to NVS to fix hardware offsets.
+
+## Calibration
+This firmware includes a calibration system to correct for hardware inaccuracies (e.g., VRef offsets, clock drift). Calibration data is saved to Non-Volatile Storage (NVS) and persists across reboots.
+
+### Voltage Calibration (Oscilloscope)
+To correct voltage readings (e.g., if 3.3V reads as 3.1V):
+1.  Navigate to the Oscilloscope tab.
+2.  Click the Calibrate Voltage button (wrench icon &#128736;).
+3.  Apply a stable voltage to the input pin.
+4.  Click `+ Add Point`.
+5.  Enter the Measured value (what the scope currently shows) and the Actual value (measured by a reliable multimeter).
+6.  Repeat for at least 2 points (e.g., one low voltage and one high voltage).
+7.  Click `Calculate & Save`. The system calculates a linear regression ($y = mx + c$) and applies it to future readings.
+
+### Frequency Calibration (Function Generator)
+To fix frequency mismatches:
+1.  Navigate to the Func Gen tab.
+2.  Select the Wave type you want to calibrate (Square, Sine, or Triangle).
+3.  Set a Freq (e.g., 1000 Hz) and turn it on.
+4.  Click the Calibrate Frequency button (wrench icon &#128736;).
+5.  Measure the real output frequency using an external counter or the scope itself.
+6.  Enter the Target Freq (e.g., 1000) and the Actual Output (e.g., 950).
+7.  Click Update Factor. The system calculates a correction ratio and saves it for that specific wave type.
+
+*Note: You can reset all calibration data to factory defaults via the "Reset" button (circular arrow &olarr;) in the Function Generator tab.*
 
 ## Getting Started
 
